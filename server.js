@@ -38,11 +38,12 @@ async function mysqlStore(){
  await pool.query("SELECT 1");
  await pool.query(`CREATE TABLE IF NOT EXISTS menu_items(id VARCHAR(40) NOT NULL PRIMARY KEY,name VARCHAR(60) NOT NULL,cat VARCHAR(30) NOT NULL,price DECIMAL(10,2) NOT NULL,cost DECIMAL(10,2) NOT NULL DEFAULT 0,stock INT NOT NULL DEFAULT 50,is_on TINYINT(1) NOT NULL DEFAULT 1,ord BIGINT NOT NULL DEFAULT 0,image MEDIUMTEXT NULL,imgv BIGINT NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
  await pool.query(`CREATE TABLE IF NOT EXISTS orders(id VARCHAR(40) NOT NULL PRIMARY KEY,t BIGINT NOT NULL,day VARCHAR(10) NOT NULL,name VARCHAR(60) NOT NULL,total DECIMAL(10,2) NOT NULL,status VARCHAR(12) NOT NULL DEFAULT 'pending',INDEX idx_orders_day(day)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
- await pool.query(`CREATE TABLE IF NOT EXISTS order_items(order_id VARCHAR(40) NOT NULL,item_id VARCHAR(40) NOT NULL,name VARCHAR(60) NOT NULL,price DECIMAL(10,2) NOT NULL,cost DECIMAL(10,2) NOT NULL DEFAULT 0,qty INT NOT NULL,FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+ await pool.query(`CREATE TABLE IF NOT EXISTS order_items(id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,order_id VARCHAR(40) NOT NULL,item_id VARCHAR(40) NOT NULL,name VARCHAR(60) NOT NULL,price DECIMAL(10,2) NOT NULL,cost DECIMAL(10,2) NOT NULL DEFAULT 0,qty INT NOT NULL,FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
  const addCol=async(t,c,def)=>{const [r]=await pool.query("SELECT COUNT(*) AS n FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?",[t,c]);if(!r[0].n)await pool.query(`ALTER TABLE ${t} ADD COLUMN ${c} ${def}`)};
  await addCol("menu_items","cost","DECIMAL(10,2) NOT NULL DEFAULT 0");
  await addCol("menu_items","stock","INT NOT NULL DEFAULT 50");
  await addCol("order_items","cost","DECIMAL(10,2) NOT NULL DEFAULT 0");
+ await addCol("order_items","id","BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST");
  await addCol("menu_items","image","MEDIUMTEXT NULL");
  await addCol("menu_items","imgv","BIGINT NOT NULL DEFAULT 0");
  const [[c]]=await pool.query("SELECT COUNT(*) AS n FROM menu_items");
