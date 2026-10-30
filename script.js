@@ -197,9 +197,14 @@ document.addEventListener("change",function(e){var t=e.target,id=t.dataset&&t.da
 window.addEventListener("storage",function(e){if(e.key===K&&!API){loadLocal();refresh()}});
 setInterval(function(){if(!API&&ready&&(view==="queue"||view==="staff"||view==="admin")){loadLocal();refresh()}},5000);
 window.addEventListener("hashchange",function(){route();render()});
-var dip=null,ib=document.getElementById("install");
-window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();dip=e;if(ib)ib.hidden=false});
-if(ib)ib.addEventListener("click",function(){if(dip){dip.prompt();dip=null;ib.hidden=true}});
+var dip=null,ib=document.getElementById("install"),ua=navigator.userAgent,standalone=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone;
+if(ib&&!standalone&&location.protocol.indexOf("http")===0)ib.hidden=false;
+window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();dip=e});
+if(ib)ib.addEventListener("click",function(){
+ if(dip){dip.prompt();dip=null;return}
+ if(/FBAN|FBAV|FB_IAB|Messenger|Instagram|Line\//i.test(ua)){alert("Open this link in Chrome (Android) or Safari (iPhone) first, then tap Install app again. In Messenger or Facebook, tap the menu (⋮ or …) and choose “Open in browser”.");return}
+ if(/iPhone|iPad|iPod/i.test(ua)){alert("On iPhone: tap the Share button in Safari, then choose “Add to Home Screen”.");return}
+ alert("On Android: tap the ⋮ menu in Chrome, then choose “Install app” or “Add to Home screen”.")});
 window.addEventListener("appinstalled",function(){if(ib)ib.hidden=true});
 if("serviceWorker" in navigator&&location.protocol.indexOf("http")===0)navigator.serviceWorker.register("sw.js").catch(function(){});
 route();try{my=JSON.parse(localStorage.getItem(KM)||"[]")}catch(e){my=[]}render();start();
