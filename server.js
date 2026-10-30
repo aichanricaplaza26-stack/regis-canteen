@@ -81,8 +81,8 @@ async function mysqlStore(){
   clearDemo:async()=>{await pool.query("DELETE FROM orders WHERE name LIKE 'DEMO %'")}};
 }
 
-const STATIC={"/":"index.html","/index.html":"index.html","/staff":"staff.html","/staff.html":"staff.html","/admin":"admin.html","/admin.html":"admin.html","/style.css":"style.css","/script.js":"script.js"};
-const TYPES={".html":"text/html; charset=utf-8",".css":"text/css",".js":"text/javascript"};
+const STATIC={"/":"index.html","/index.html":"index.html","/staff":"staff.html","/staff.html":"staff.html","/admin":"admin.html","/admin.html":"admin.html","/style.css":"style.css","/script.js":"script.js","/sw.js":"sw.js","/manifest.webmanifest":"manifest.webmanifest","/manifest-staff.webmanifest":"manifest-staff.webmanifest","/manifest-admin.webmanifest":"manifest-admin.webmanifest","/icon-192.png":"icon-192.png","/icon-512.png":"icon-512.png","/icon-512-maskable.png":"icon-512-maskable.png"};
+const TYPES={".html":"text/html; charset=utf-8",".css":"text/css",".js":"text/javascript",".png":"image/png",".webmanifest":"application/manifest+json"};
 const role=r=>{const p=r.headers["x-pin"];return p===ADMIN_PIN?"admin":p===STAFF_PIN?"staff":null};
 const send=(res,c,o)=>{res.writeHead(c,{"Content-Type":"application/json","Cache-Control":"no-store"});res.end(JSON.stringify(o))};
 const body=(r,lim=2e4)=>new Promise(ok=>{let b="";r.on("data",c=>{b+=c;if(b.length>lim)r.destroy()});r.on("end",()=>{try{ok(JSON.parse(b||"{}"))}catch(e){ok({})}})});

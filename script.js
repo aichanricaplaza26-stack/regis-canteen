@@ -1,7 +1,7 @@
 (function(){
 var K="rmc_canteen_v2",KM="rmc_my_v1",PIN="1234",TZ="Asia/Manila",LOW=5;
 var seed=[["Chicken Adobo Rice Meal","Rice Meals",65,40,30],["Pork Sisig Rice Meal","Rice Meals",70,45,30],["Beef Tapa Rice Meal","Rice Meals",75,48,25],["Hotdog Sandwich","Snacks",25,15,40],["Siomai (4 pcs)","Snacks",30,18,40],["Fries","Snacks",35,20,30],["Iced Tea","Drinks",20,8,50],["Bottled Water","Drinks",15,8,60],["Buko Juice","Drinks",25,14,30]];
-var S={menu:[],orders:[]},REP=null,my=[],view="menu",cat="All",cart={},showCart=false,unlocked=false,ready=false,API=false,PINV="",stab="orders",atab="dash",today=new Date().toDateString();
+var S={menu:[],orders:[]},REP=null,my=[],view="menu",cat="All",cart={},showCart=false,unlocked=false,ready=false,API=false,PINV="",stab="orders",atab="dash",offline=false,lost=false,today=new Date().toDateString();
 
 /* ---------- data layer ---------- */
 function route(){var pg=document.body.getAttribute("data-page");if(pg){view=pg;return}var h=location.hash.replace("#","");if(h==="staff")view="staff";else if(h==="admin")view="admin";else if(view==="staff"||view==="admin")view="menu"}
@@ -15,8 +15,8 @@ function api(url,body){var o={headers:{"Content-Type":"application/json","x-pin"
 function stateUrl(){return "/api/state?mine="+encodeURIComponent(my.join(","))}
 function poll(){var p=api(stateUrl()).then(function(j){S.menu=j.menu;S.orders=j.orders;renumber();ready=true});
  if(view==="admin"&&unlocked&&atab==="dash")p=p.then(function(){return api("/api/report").then(function(r){REP=r.orders})});
- return p.then(refresh).catch(function(){})}
-function start(){api(stateUrl()).then(function(j){API=true;S.menu=j.menu;S.orders=j.orders;renumber();ready=true;render();setInterval(poll,3000)}).catch(function(){loadLocal();ready=true;render()})}
+ return p.then(function(){lost=false;refresh()}).catch(function(e){if(e&&e.name==="TypeError"){lost=true;refresh()}})}
+function start(){api(stateUrl()).then(function(j){API=true;offline=false;S.menu=j.menu;S.orders=j.orders;renumber();ready=true;render();setInterval(poll,3000)}).catch(function(e){if(e&&e.name==="TypeError"&&location.protocol!=="file:"){offline=true;render();setTimeout(start,4000);return}loadLocal();ready=true;render()})}
 function refresh(){if(view==="admin"&&unlocked&&atab==="menu")return;var f=document.activeElement;if(!f||f.tagName!=="INPUT")render()}
 
 /* ---------- helpers ---------- */
@@ -137,7 +137,7 @@ function adminView(){
 }
 function render(){
  renderNav();
- document.getElementById("app").innerHTML=!ready?'<div class="empty">Loading…</div>':view==="menu"?menuView():view==="queue"?queueView():view==="staff"?staffView():adminView();
+ document.getElementById("app").innerHTML=(lost?'<div class="alert">Connection lost. Reconnecting…</div>':'')+(!ready?(offline?'<div class="empty"><b>Can’t reach the canteen server.</b><br>Check your internet connection. Trying again…</div>':'<div class="empty">Loading…<br><small>If the app was idle, the server may take up to a minute to wake up.</small></div>'):view==="menu"?menuView():view==="queue"?queueView():view==="staff"?staffView():adminView());
  document.getElementById("cartslot").innerHTML=cartBar();
 }
 
@@ -197,5 +197,10 @@ document.addEventListener("change",function(e){var t=e.target,id=t.dataset&&t.da
 window.addEventListener("storage",function(e){if(e.key===K&&!API){loadLocal();refresh()}});
 setInterval(function(){if(!API&&ready&&(view==="queue"||view==="staff"||view==="admin")){loadLocal();refresh()}},5000);
 window.addEventListener("hashchange",function(){route();render()});
+var dip=null,ib=document.getElementById("install");
+window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();dip=e;if(ib)ib.hidden=false});
+if(ib)ib.addEventListener("click",function(){if(dip){dip.prompt();dip=null;ib.hidden=true}});
+window.addEventListener("appinstalled",function(){if(ib)ib.hidden=true});
+if("serviceWorker" in navigator&&location.protocol.indexOf("http")===0)navigator.serviceWorker.register("sw.js").catch(function(){});
 route();try{my=JSON.parse(localStorage.getItem(KM)||"[]")}catch(e){my=[]}render();start();
 })();
