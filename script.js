@@ -11,12 +11,12 @@ function loadLocal(){var r=null;try{r=JSON.parse(localStorage.getItem(K))}catch(
 function save(){if(API)return;try{localStorage.setItem(K,JSON.stringify({menu:S.menu,orders:S.orders}))}catch(e){}}
 function saveMy(){try{localStorage.setItem(KM,JSON.stringify(my))}catch(e){}}
 function api(url,body){var o={headers:{"Content-Type":"application/json","x-pin":PINV}};if(body!==undefined){o.method="POST";o.body=JSON.stringify(body)}
- return fetch(url,o).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||"Something went wrong");return j})})}
+ return fetch(url,o).then(function(r){if(r.status>=502&&r.status<=504){var d=new Error("Server not ready");d.down=true;throw d}return r.json().then(function(j){if(!r.ok)throw new Error(j.error||"Something went wrong");return j})})}
 function stateUrl(){return "/api/state?mine="+encodeURIComponent(my.join(","))}
 function poll(){var p=api(stateUrl()).then(function(j){S.menu=j.menu;S.orders=j.orders;renumber();ready=true});
  if(view==="admin"&&unlocked&&atab==="dash")p=p.then(function(){return api("/api/report").then(function(r){REP=r.orders})});
- return p.then(function(){lost=false;refresh()}).catch(function(e){if(e&&e.name==="TypeError"){lost=true;refresh()}})}
-function start(){api(stateUrl()).then(function(j){API=true;offline=false;S.menu=j.menu;S.orders=j.orders;renumber();ready=true;render();setInterval(poll,3000)}).catch(function(e){if(e&&e.name==="TypeError"&&location.protocol!=="file:"){offline=true;render();setTimeout(start,4000);return}loadLocal();ready=true;render()})}
+ return p.then(function(){lost=false;refresh()}).catch(function(e){if(e&&(e.name==="TypeError"||e.down)){lost=true;refresh()}})}
+function start(){api(stateUrl()).then(function(j){API=true;offline=false;S.menu=j.menu;S.orders=j.orders;renumber();ready=true;render();setInterval(poll,3000)}).catch(function(e){if(e&&(e.name==="TypeError"||e.down)&&location.protocol!=="file:"){offline=true;render();setTimeout(start,4000);return}loadLocal();ready=true;render()})}
 function refresh(){if(view==="admin"&&unlocked&&atab==="menu")return;var f=document.activeElement;if(!f||f.tagName!=="INPUT")render()}
 
 /* ---------- helpers ---------- */
@@ -137,7 +137,7 @@ function adminView(){
 }
 function render(){
  renderNav();
- document.getElementById("app").innerHTML=(lost?'<div class="alert">Connection lost. Reconnecting…</div>':'')+(!ready?(offline?'<div class="empty"><b>Can’t reach the canteen server.</b><br>Check your internet connection. Trying again…</div>':'<div class="empty">Loading…<br><small>If the app was idle, the server may take up to a minute to wake up.</small></div>'):view==="menu"?menuView():view==="queue"?queueView():view==="staff"?staffView():adminView());
+ document.getElementById("app").innerHTML=(lost?'<div class="alert">Connection lost. Reconnecting…</div>':'')+(!ready?(offline?'<div class="empty"><b>Can’t reach the canteen server right now.</b><br>Check your internet connection. If it keeps happening, tell the canteen staff. Trying again…</div>':'<div class="empty">Loading…<br><small>If the app was idle, the server may take up to a minute to wake up.</small></div>'):view==="menu"?menuView():view==="queue"?queueView():view==="staff"?staffView():adminView());
  document.getElementById("cartslot").innerHTML=cartBar();
 }
 

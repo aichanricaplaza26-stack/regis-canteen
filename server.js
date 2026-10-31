@@ -35,7 +35,7 @@ async function mysqlStore(){
  const mysql=require("mysql2/promise");
  const cfg=process.env.DATABASE_URL?{uri:process.env.DATABASE_URL}:{host:process.env.DB_HOST,port:+(process.env.DB_PORT||3306),user:process.env.DB_USER,password:process.env.DB_PASSWORD,database:process.env.DB_NAME};
  const pool=mysql.createPool({...cfg,waitForConnections:true,connectionLimit:10,decimalNumbers:true,charset:"utf8mb4",ssl:process.env.DB_SSL==="true"?{rejectUnauthorized:true,ca:process.env.DB_SSL_CA||undefined}:undefined});
- await pool.query("SELECT 1");
+ try{await pool.query("SELECT 1")}catch(e){await pool.end().catch(()=>{});throw e}
  await pool.query(`CREATE TABLE IF NOT EXISTS menu_items(id VARCHAR(40) NOT NULL PRIMARY KEY,name VARCHAR(60) NOT NULL,cat VARCHAR(30) NOT NULL,price DECIMAL(10,2) NOT NULL,cost DECIMAL(10,2) NOT NULL DEFAULT 0,stock INT NOT NULL DEFAULT 50,is_on TINYINT(1) NOT NULL DEFAULT 1,ord BIGINT NOT NULL DEFAULT 0,image MEDIUMTEXT NULL,imgv BIGINT NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
  await pool.query(`CREATE TABLE IF NOT EXISTS orders(id VARCHAR(40) NOT NULL PRIMARY KEY,t BIGINT NOT NULL,day VARCHAR(10) NOT NULL,name VARCHAR(60) NOT NULL,total DECIMAL(10,2) NOT NULL,status VARCHAR(12) NOT NULL DEFAULT 'pending',INDEX idx_orders_day(day)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
  await pool.query(`CREATE TABLE IF NOT EXISTS order_items(id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,order_id VARCHAR(40) NOT NULL,item_id VARCHAR(40) NOT NULL,name VARCHAR(60) NOT NULL,price DECIMAL(10,2) NOT NULL,cost DECIMAL(10,2) NOT NULL DEFAULT 0,qty INT NOT NULL,FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
@@ -111,9 +111,9 @@ function makeHandler(S){return async(req,res)=>{
  if(req.method==="GET"&&url.startsWith("/img/")){const im=await S.getImage(decodeURIComponent(url.slice(5)));const mt=im&&/^data:(image\/\w+);base64,(.*)$/.exec(im);if(!mt){res.writeHead(404);return res.end()}res.writeHead(200,{"Content-Type":mt[1],"Cache-Control":"public, max-age=31536000, immutable"});return res.end(Buffer.from(mt[2],"base64"))}
  if(!url.startsWith("/api/"))return send(res,404,{error:"Not found"});
  const R=role(req),b=req.method==="POST"?await body(req,/^\/api\/menu\/[^/]+\/image/.test(url)?6e5:2e4):{},p=url.split("/").slice(2);
+ if(url==="/api/health"){let n=null;try{n=(await S.state()).orders.length}catch(e){}return send(res,200,{storage:S.name,database:n!==null?"connected":"not connected",ordersToday:n})}
  if(url==="/api/state"){const mine=(u.searchParams.get("mine")||"").split(",").filter(Boolean).slice(0,50);return send(res,200,view(await S.state(),R,mine))}
  if(url==="/api/auth"){const r=b.pin===ADMIN_PIN?"admin":b.pin===STAFF_PIN?"staff":null;return r&&(b.need!=="admin"||r==="admin")?send(res,200,{ok:1}):send(res,401,{error:"Wrong PIN"})}
- if(url==="/api/health")return send(res,200,{storage:S.name,ordersToday:(await S.state()).orders.length});
  if(url==="/api/report"){if(R!=="admin")return send(res,401,{error:"Admin sign-in required"});return send(res,200,{orders:await S.orders(dayStr(6))})}
  if(url==="/api/orders"&&req.method==="POST"){
   const name=String(b.name||"").trim().slice(0,60);if(!name)return send(res,400,{error:"Enter your name or student ID"});
@@ -152,12 +152,19 @@ function makeHandler(S){return async(req,res)=>{
  send(res,404,{error:"Not found"})
 }}
 
-(async()=>{
- let S;try{S=(process.env.DATABASE_URL||process.env.DB_HOST)?await mysqlStore():jsonStore()}
- catch(e){console.error("\nCould not start the database: "+e.message+"\nCheck DATABASE_URL / DB_HOST, DB_USER, DB_PASSWORD, DB_NAME (and run: npm install).\n");process.exit(1)}
- const h=makeHandler(S);
- http.createServer((q,r)=>h(q,r).catch(e=>{console.error(e);if(!r.headersSent)send(r,500,{error:"Server error. Try again."})})).listen(PORT,"0.0.0.0",()=>{
-  console.log("\nCanteen system running. Storage: "+S.name+"\n  On this computer: http://localhost:"+PORT);
-  for(const l of Object.values(os.networkInterfaces()))for(const a of l)if(a.family==="IPv4"&&!a.internal)console.log("  On phones (same Wi-Fi): http://"+a.address+":"+PORT);
-  console.log("\n  Students: /    Staff: /staff    Admin: /admin\n")})
-})();
+const USE_MYSQL=!!(process.env.DATABASE_URL||process.env.DB_HOST);
+let real=null;
+// The web server starts right away; the database connects in the background and retries until it works.
+const S=new Proxy({},{get:(_,k)=>k==="name"?(real?real.name:"not connected"):(...a)=>{if(!real)throw Object.assign(new Error("Database not connected"),{down:true});return real[k](...a)}});
+async function connect(){
+ try{real=USE_MYSQL?await mysqlStore():jsonStore();console.log("Database connected: "+real.name)}
+ catch(e){console.error("Database not reachable: "+e.message+" (trying again in 10 seconds). Check that your MySQL service is running.");setTimeout(connect,10000)}
+}
+const DOWN=["ECONNREFUSED","ETIMEDOUT","ECONNRESET","PROTOCOL_CONNECTION_LOST","ENOTFOUND","EPIPE"];
+const h=makeHandler(S);
+http.createServer((q,r)=>h(q,r).catch(e=>{
+ if(e.down||DOWN.includes(e.code)){if(!r.headersSent)send(r,503,{error:"The database isn’t reachable right now. Trying again…",down:true});return}
+ console.error(e);if(!r.headersSent)send(r,500,{error:"Server error. Try again."})})).listen(PORT,"0.0.0.0",()=>{
+ console.log("\nCanteen web server running on port "+PORT+(USE_MYSQL?" (connecting to MySQL…)":" (using data.json)"));
+ for(const l of Object.values(os.networkInterfaces()))for(const a of l)if(a.family==="IPv4"&&!a.internal)console.log("  On phones (same Wi-Fi): http://"+a.address+":"+PORT);
+ console.log("  Students: /    Staff: /staff    Admin: /admin\n");connect()});
