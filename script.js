@@ -1,7 +1,7 @@
 (function(){
 var K="rmc_canteen_v2",KM="rmc_my_v1",PIN="1234",TZ="Asia/Manila",LOW=5;
 var seed=[["Chicken Adobo Rice Meal","Rice Meals",65,40,30],["Pork Sisig Rice Meal","Rice Meals",70,45,30],["Beef Tapa Rice Meal","Rice Meals",75,48,25],["Hotdog Sandwich","Snacks",25,15,40],["Siomai (4 pcs)","Snacks",30,18,40],["Fries","Snacks",35,20,30],["Iced Tea","Drinks",20,8,50],["Bottled Water","Drinks",15,8,60],["Buko Juice","Drinks",25,14,30]];
-var S={menu:[],orders:[]},REP=null,my=[],view="menu",cat="All",cart={},showCart=false,unlocked=false,ready=false,API=false,PINV="",stab="orders",atab="dash",offline=false,lost=false,CFG=null,pay="cash",nameV="",refV="",today=new Date().toDateString();
+var S={menu:[],orders:[]},REP=null,my=[],view="menu",cat="All",cart={},showCart=false,unlocked=false,ready=false,API=false,PINV="",stab="orders",atab="dash",offline=false,lost=false,CFG=null,pay="cash",nameV="",refV="",proofV="",CASH={},today=new Date().toDateString();
 
 /* ---------- data layer ---------- */
 function route(){var pg=document.body.getAttribute("data-page");if(pg){view=pg;return}var h=location.hash.replace("#","");if(h==="staff")view="staff";else if(h==="admin")view="admin";else if(view==="staff"||view==="admin")view="menu"}
@@ -36,12 +36,15 @@ function payLine(o){
  if(o.ps==="verify")return '<div style="margin-top:8px"><span class="tag s-preparing">Payment being checked · '+PL[pm]+'</span></div>';
  return '<div style="margin-top:8px"><span class="tag s-pending">Pay at the counter</span></div>'}
 function blocked(o,next){var pm=o.pay||"cash";return !!o.wait||(next==="done"&&pm!=="cash"&&o.ps!=="paid")}
+function chgHtml(id){var o=S.orders.filter(function(x){return x.id===id})[0],v=CASH[id];if(!o||v===undefined||v==="")return "";var r=parseFloat(v);if(!(r>=0))return "";var d=r-o.total;
+ return d<0?'<span style="color:var(--bad);font-weight:700">Short by '+peso(-d)+'</span>':'<span style="color:var(--ok);font-weight:800;font-size:1.3rem">Change: '+peso(d)+'</span>'}
+function cashBlock(o){return '<div style="margin:0 0 8px"><input data-cr="'+o.id+'" type="number" inputmode="decimal" min="0" placeholder="Cash received (₱)" aria-label="Cash received" value="'+esc(CASH[o.id]||"")+'" style="padding:8px"><div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0"><button class="chip" data-cash="'+o.id+':exact">Exact</button>'+[100,200,500,1000].map(function(a){return '<button class="chip" data-cash="'+o.id+':'+a+'">₱'+a+'</button>'}).join("")+'</div><div id="chg-'+o.id+'">'+chgHtml(o.id)+'</div></div>'}
 function staffPay(o){var pm=o.pay||"cash",h;
  if(o.ps==="paid")h='<span class="tag s-in">Paid · '+PL[pm]+'</span>';
  else if(pm==="cash")h='<span class="tag s-pending">Cash at counter</span>';
  else if(pm==="paymongo")h='<span class="tag s-low">Waiting for online payment</span>';
- else h='<span class="tag s-preparing">'+PL[pm]+' ref: <b>'+esc(o.ref||"?")+'</b></span><button class="btn tick" data-paid="'+o.id+'">Confirm payment</button>';
- return '<div style="margin:6px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+h+'</div>'}
+ else h='<span class="tag s-preparing">'+PL[pm]+' ref: <b>'+esc(o.ref||"?")+'</b></span><button class="btn tick" data-paid="'+o.id+'">Confirm payment</button>'+(o.hp?'<button class="btn sec" data-proof="'+o.id+'">View screenshot</button>':"");
+ return '<div style="margin:6px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+h+'</div>'+(pm==="cash"&&o.ps!=="paid"?cashBlock(o):"")}
 function label(s){return{pending:"Waiting",preparing:"Preparing",ready:"Ready",done:"Picked up",cancelled:"Cancelled"}[s]}
 function find(id){return S.menu.filter(function(x){return String(x.id)===String(id)})[0]}
 function avail(m){return m.on&&m.stock>0}
@@ -63,7 +66,7 @@ var EMO=[[/adobo|chicken/,"🍗"],[/sisig|pork|bacon/,"🥓"],[/tapa|beef|steak/
 function emo(m){var t=(m.name+" "+m.cat).toLowerCase();for(var i=0;i<EMO.length;i++)if(EMO[i][0].test(t))return EMO[i][1];return "🍽️"}
 function thumb(m,sm){var src=m.image||(m.imgv?"/img/"+encodeURIComponent(m.id)+"?v="+m.imgv:"");
  return src?'<img class="thumb'+(sm?' sm':'')+'" src="'+esc(src)+'" alt="" loading="lazy">':'<div class="thumb ph'+(sm?' sm':'')+'" aria-hidden="true">'+emo(m)+'</div>'}
-function resize(file,cb){var r=new FileReader();r.onload=function(){var im=new Image();im.onload=function(){var M=480,s=Math.min(1,M/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);var x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);cb(c.toDataURL("image/jpeg",.8))};im.onerror=function(){toast("That file isn’t a usable image")};im.src=r.result};r.readAsDataURL(file)}
+function resize(file,cb,mx,ql){var r=new FileReader();r.onload=function(){var im=new Image();im.onload=function(){var M=mx||480,s=Math.min(1,M/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);var x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);cb(c.toDataURL("image/jpeg",ql||.8))};im.onerror=function(){toast("That file isn’t a usable image")};im.src=r.result};r.readAsDataURL(file)}
 
 /* ---------- views ---------- */
 function renderNav(){
@@ -95,7 +98,7 @@ function payBox(){
  var h='<div class="card"><b>Payment</b><div class="chips" style="margin-top:8px" role="group" aria-label="Payment method">'+ms.map(function(m){return '<button class="chip" aria-pressed="'+(m.id===pay)+'" data-pay="'+m.id+'">'+esc(m.label)+'</button>'}).join("")+'</div>';
  if(pay==="cash")h+='<p class="note" style="margin:0">Pay at the counter when you pick up.</p>';
  else if(pay==="online")h+='<p class="note" style="margin:0">You will be sent to a secure payment page (GCash, Maya). Your order is confirmed as soon as you pay. Unpaid orders are cancelled after '+(cur.hold||15)+' minutes.'+(cur.min?' Minimum '+peso(cur.min)+'.':'')+'</p>';
- else h+='<ol class="note" style="margin:0;padding-left:20px"><li>Send exactly <b>'+peso(cartTotal())+'</b> to <b>'+esc(cur.number)+'</b>'+(cur.name?' ('+esc(cur.name)+')':'')+' using '+esc(cur.label)+'.</li><li>Type the reference number from your receipt below.</li></ol>'+(cur.qr?'<img class="qr" src="/pay-qr/'+cur.id+'" alt="'+esc(cur.label)+' QR code">':'')+'<label for="rf">Reference number</label><input id="rf" autocomplete="off" autocapitalize="characters" value="'+esc(refV)+'" placeholder="From your payment receipt"><p class="note" style="margin:8px 0 0">Staff will check your payment before you can pick up.</p>';
+ else h+='<ol class="note" style="margin:0;padding-left:20px"><li>Send exactly <b>'+peso(cartTotal())+'</b> to <b>'+esc(cur.number)+'</b>'+(cur.name?' ('+esc(cur.name)+')':'')+' using '+esc(cur.label)+'.</li><li>Type the reference number from your receipt below.</li></ol>'+(cur.qr?'<img class="qr" src="/pay-qr/'+cur.id+'" alt="'+esc(cur.label)+' QR code">':'')+'<label for="rf">Reference number</label><input id="rf" autocomplete="off" autocapitalize="characters" value="'+esc(refV)+'" placeholder="From your payment receipt"><label>Screenshot of your payment</label><div style="display:flex;gap:10px;align-items:center"><label class="btn sec" for="pf" style="cursor:pointer;margin:0">'+(proofV?"Change screenshot":"Attach screenshot")+'</label><input id="pf" type="file" accept="image/*" hidden>'+(proofV?'<img class="thumb sm" src="'+proofV+'" alt="Your payment screenshot">':"")+'</div><p class="note" style="margin:8px 0 0">Staff will check your payment before you can pick up.</p>';
  return h+'</div>'}
 function cartView(){
  var it=cartItems();
@@ -179,6 +182,8 @@ document.addEventListener("click",function(e){
  var t=e.target.closest("button");if(!t)return;var d=t.dataset;
  if(d.v){view=d.v;showCart=false;render();return}
  if(d.pay){pay=d.pay;render();return}
+ if(d.cash){var cp=d.cash.split(":"),co=S.orders.filter(function(x){return x.id===cp[0]})[0];CASH[cp[0]]=cp[1]==="exact"?String(co?co.total:""):cp[1];render();return}
+ if(d.proof){api("/api/orders/"+d.proof+"/proof").then(function(j){var b=document.createElement("div");b.className="lightbox";b.innerHTML='<img alt="Payment screenshot">';b.firstChild.src=j.image;b.onclick=function(){b.remove()};document.body.appendChild(b)}).catch(fail);return}
  if(d.paid){api("/api/orders/"+d.paid+"/pay",{ps:"paid"}).then(function(){toast("Payment confirmed");return poll()}).catch(fail);return}
  if(d.paylink){api("/api/orders/"+d.paylink+"/pay",{action:"link"}).then(function(j){if(j.url){location.href=j.url;return}return poll().then(function(){toast("Already paid. Thank you!")})}).catch(fail);return}
  if(d.paychk){api("/api/orders/"+d.paychk+"/pay",{action:"check"}).then(poll).then(function(){toast("Payment status updated")}).catch(fail);return}
@@ -207,8 +212,9 @@ document.addEventListener("click",function(e){
   var it=cartItems();if(!it.length)return;
   if(API){var rfEl=document.getElementById("rf"),rv=rfEl?rfEl.value.trim():"";
    if((pay==="gcash"||pay==="maya")&&!rv){toast("Enter the payment reference number");return}
+   if((pay==="gcash"||pay==="maya")&&!proofV){toast("Attach a screenshot of your payment");return}
    t.disabled=true;
-   api("/api/orders",{name:nm,items:it.map(function(i){return{id:i.id,qty:i.qty}}),pay:pay,ref:rv}).then(function(j){my.push(j.id);saveMy();cart={};refV="";showCart=false;view="queue";
+   api("/api/orders",{name:nm,items:it.map(function(i){return{id:i.id,qty:i.qty}}),pay:pay,ref:rv,proof:(pay==="gcash"||pay==="maya")?proofV:""}).then(function(j){my.push(j.id);saveMy();cart={};refV="";proofV="";showCart=false;view="queue";
     if(j.url){toast("Opening the payment page…");location.href=j.url;return}
     return poll().then(function(){render();toast(pay==="cash"?"Order placed. Check My queue for your number.":"Order placed. Staff will confirm your payment.")})}).catch(function(e){t.disabled=false;toast(e.message);poll()});return}
   for(var k=0;k<it.length;k++){var mk=find(it[k].id);if(!mk||!avail(mk)||mk.stock<it[k].qty){toast("Not enough stock for "+it[k].name);return}}
@@ -230,8 +236,9 @@ document.addEventListener("click",function(e){
  if(a==="demo"){api("/api/demo",{}).then(function(){toast("Sample data loaded");return poll()}).then(function(){render()}).catch(fail)}
  if(a==="democlear"){api("/api/demo/clear",{}).then(function(){toast("Sample data removed");return poll()}).then(function(){render()}).catch(fail)}
 });
-document.addEventListener("input",function(e){var t=e.target;if(t.id==="nm")nameV=t.value;if(t.id==="rf")refV=t.value});
-document.addEventListener("change",function(e){var t=e.target,id=t.dataset&&t.dataset.img,f=id&&t.files[0];if(!f)return;
+document.addEventListener("input",function(e){var t=e.target;if(t.id==="nm")nameV=t.value;if(t.id==="rf")refV=t.value;if(t.dataset&&t.dataset.cr){CASH[t.dataset.cr]=t.value;var el=document.getElementById("chg-"+t.dataset.cr);if(el)el.innerHTML=chgHtml(t.dataset.cr)}});
+document.addEventListener("change",function(e){var t=e.target;if(t.id==="pf"){if(t.files[0])resize(t.files[0],function(u){proofV=u;render()},900,.7);return}
+ var id=t.dataset&&t.dataset.img,f=id&&t.files[0];if(!f)return;
  resize(f,function(url){if(API)api("/api/menu/"+id+"/image",{image:url}).then(function(){toast("Photo saved");return poll()}).then(function(){render()}).catch(fail);else{var m=find(id);m.image=url;save();render();toast("Photo saved")}})});
 window.addEventListener("storage",function(e){if(e.key===K&&!API){loadLocal();refresh()}});
 setInterval(function(){if(!API&&ready&&(view==="queue"||view==="staff"||view==="admin")){loadLocal();refresh()}},5000);
