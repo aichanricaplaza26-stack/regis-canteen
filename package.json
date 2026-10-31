@@ -1,6 +1,6 @@
 {
   "name": "regis-canteen",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "scripts": { "start": "node server.js" },
   "dependencies": { "mysql2": "^3.9.0" },

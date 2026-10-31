@@ -67,3 +67,8 @@ label{display:block;font-weight:700;font-size:.85rem;margin:8px 0 4px}
 .thumb.sm{width:48px;height:48px;border-radius:10px;font-size:1.5rem}
 
 #install{margin-top:8px;padding:8px 14px}
+
+/* payments */
+.qr{display:block;width:210px;max-width:100%;margin:10px auto;border-radius:12px;background:#fff;padding:6px}
+.card .chips{margin-bottom:8px}
+button.btn[data-paid]{padding:6px 12px}
